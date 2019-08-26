@@ -3,15 +3,7 @@
 *@author: CTS
 *@date: 17th April 2018
 *@version: 1.0
-*@Change log :
-**********************************************************************
-*Date					Description 					Author
-**********************************************************************
-*04/29/2019				Calulate Due Date Based on State	CTS
-*						Code
-**********************************************************************
 **/
-
 global class LCNSCautionPolicyTaskCreationBatch implements Database.Batchable<sObject>, Database.Stateful{
 
     global final String policyRTName;
@@ -23,8 +15,6 @@ global class LCNSCautionPolicyTaskCreationBatch implements Database.Batchable<sO
     global List<Database.SaveResult> policiesSaveResultList;
     global Integer allPoliciesToUpdateCount;
     global String allPoliciesToUpdate;
-    
-	global Map<String,CalculateDay__mdt> stateMap = new Map<String,CalculateDay__mdt>();
     
     global LCNSCautionPolicyTaskCreationBatch(String rtName, String rtId, IntegrationLog__c igLog)
     {
@@ -55,30 +45,20 @@ global class LCNSCautionPolicyTaskCreationBatch implements Database.Batchable<sO
             lcnsCautionList = System.Label.LCNS_Annuity_Cautions.split(';');  
             System.debug('lcnsAnnuityCautionList.size: ' + lcnsCautionList.size());
         }
-        
-        for(CalculateDay__mdt calculateDay : [SELECT DeveloperName
-                                                     ,DaysToAppointBy__c
-                                                     ,FieldToCalculateFrom__c
-                                                     ,Type__c
-                                                     ,StateCode__c FROM CalculateDay__mdt])
-        {
-             stateMap.put(calculateDay.StateCode__c+'_'+calculateDay.Type__c, calculateDay);
-        }
     }
     
     global Database.QueryLocator start(Database.BatchableContext BC)
     {
         System.debug('** START Method Started **');
-        System.debug(' lcnsCautionList '+lcnsCautionList);
-        System.debug(' policyRTId '+policyRTId);
-        return Database.getQueryLocator([Select Id, PolicyNumber__c,Name, First_LCNS_Caution__c, Agent__c, RecordTypeId, IssueState__c,SubmitDate__c,ApplicationSignedDate__c,
-                                        (Select Id, PolicyMaster__c, Requirement__c  FROM OutstandingRequirements__r WHERE Requirement__c IN : lcnsCautionList) 
+        
+        return Database.getQueryLocator([Select Id, Name, First_LCNS_Caution__c, Agent__c, RecordTypeId, Agency__r.Channel__c,
+                                        (Select Id, PolicyMaster__c, Requirement__c FROM OutstandingRequirements__r WHERE Requirement__c IN : lcnsCautionList) 
                                         FROM PolicyMaster__c 
                                         WHERE OutstandingRequirementsCount__c > 0 
                                         AND RecordTypeId =: policyRTId 
-                                        AND First_LCNS_Caution__c = FALSE
-                                       // AND RecordType.DeveloperName = 'Annuity']);
-                                        AND (LastModifiedDate >=: intigrationLog.RefreshTime__c OR CreatedDate >=: intigrationLog.RefreshTime__c)]);
+                                        AND First_LCNS_Caution__c = FALSE 
+                                       // AND (LastModifiedDate >=: intigrationLog.RefreshTime__c OR CreatedDate >=: intigrationLog.RefreshTime__c)]);
+                                        AND (LastModifiedDate >=: system.today())]);
     }
     
     global void execute(Database.BatchableContext BC, List<sObject> scope)
@@ -103,150 +83,103 @@ global class LCNSCautionPolicyTaskCreationBatch implements Database.Batchable<sO
         for(sObject s : scope)
         {
             PolicyMaster__c pm = (PolicyMaster__c)s;
-            System.debug('Policy ::'+pm);
-            System.debug('Policy ::'+pm.PolicyNumber__c);
-            Date dueDate = null;
-            
-            /**Added the lines to calulate due date from issue state*/
-                
-	            if( policyRTName == 'Life Policy')//Start
-	            {
-          			CalculateDay__mdt cd = stateMap.get(pm.IssueState__c+'_Life');//Added on 04/29/19
-          			
-          			/*if(cd != NULL && cd.DaysToAppointBy__c != NULL && cd.DaysToAppointBy__c == 0 )
-          			{
-          				if(cd.FieldToCalculateFrom__c == 'Submit Date' && pm.SubmitDate__c != NULL){
-          					dueDate = pm.SubmitDate__c.date().addDays( 1 );
-          				}
-          				else if(cd.FieldToCalculateFrom__c == 'App Sign Date' && pm.ApplicationSignedDate__c != NULL)
-          				{
-          					dueDate = pm.ApplicationSignedDate__c.date().addDays( 1 );
-          				}
-	          		}
-          			else*/
-          			if(cd != NULL && cd.FieldToCalculateFrom__c != NULL && cd.DaysToAppointBy__c != NULL)
-          			{
-          				if(cd.FieldToCalculateFrom__c == 'Submit Date' && pm.SubmitDate__c != NULL){
-          					dueDate = pm.SubmitDate__c.date().addDays( Integer.valueOf( cd.DaysToAppointBy__c ));
-          				}
-          				else if(cd.FieldToCalculateFrom__c == 'App Sign Date' && pm.ApplicationSignedDate__c != NULL)
-          				{
-          					dueDate = pm.ApplicationSignedDate__c.date().addDays( Integer.valueOf( cd.DaysToAppointBy__c ));
-          				}
-          			}
-          			
-	            }
-	            else if( policyRTName == 'Annuity Policy' )
-	            {
-	            	CalculateDay__mdt cd = stateMap.get(pm.IssueState__c+'_Annuity');//Added on 04/29/19
-	            	
-	            /*	if(cd != NULL && cd.DaysToAppointBy__c != NULL && cd.DaysToAppointBy__c == 0 )
-          			{
-          				if(cd.FieldToCalculateFrom__c == 'Submit Date' && pm.SubmitDate__c != NULL){
-          					dueDate = pm.SubmitDate__c.date().addDays( 1 );
-          				}
-          				else if(cd.FieldToCalculateFrom__c == 'App Sign Date' && pm.ApplicationSignedDate__c != NULL)
-          				{
-          					dueDate = pm.ApplicationSignedDate__c.date().addDays( 1 );
-          				}
-	          		}
-          			else*/
-          			if(cd != NULL && cd.FieldToCalculateFrom__c != NULL && cd.DaysToAppointBy__c != NULL)
-          			{
-          				if(cd.FieldToCalculateFrom__c == 'Submit Date' && pm.SubmitDate__c != NULL){
-          					dueDate = pm.SubmitDate__c.date().addDays( Integer.valueOf( cd.DaysToAppointBy__c ));
-          				}
-          				else if(cd.FieldToCalculateFrom__c == 'App Sign Date' && pm.ApplicationSignedDate__c != NULL)
-          				{
-          					dueDate = pm.ApplicationSignedDate__c.date().addDays( Integer.valueOf( cd.DaysToAppointBy__c ));
-          				}
-          			}
-          			
-	            }//End
-	            /*
-            	else{//120 days
-            		dueDate = System.today().addDays(Integer.valueOf(System.Label.LCNS120));
-            	}*/
-            	
-           System.debug('pm.OutstandingRequirements__r.size() '+pm.OutstandingRequirements__r.size() ); 
-            if(pm.OutstandingRequirements__r.size() > 0 && dueDate != null)
-            {
-                for(NBOutstandingRequirement__c nbor : pm.OutstandingRequirements__r)
+           system.debug('pm----------'+pm);
+                if(pm.OutstandingRequirements__r.size() > 0)
                 {
-                    String nbORequirement = nbor.Requirement__c.trim().toUpperCase();
-                    
-                    if(!pmTaskMap.containsKey(nbor.PolicyMaster__c) )
+                    system.debug('Step-1---------');
+                    for(NBOutstandingRequirement__c nbor : pm.OutstandingRequirements__r)
                     {
-                        Task t = New Task();
-                        t.ActivityDate = dueDate;//Chnaged from System.today to dueDate on 04/29/19
-                        t.Description = nbor.Requirement__c;
-                        t.Sales_Unit__c = lcnsCautionList[0].SalesUnit__c;
-                        t.Status = lcnsCautionList[0].Status__c;
-                        t.Subject = lcnsCautionList[0].Subject__c;
-                        t.WhatId = nbor.PolicyMaster__c;
-                        t.WhoId = pm.Agent__c;
+                        system.debug('Step-2---------');
+                        String nbORequirement = nbor.Requirement__c.trim().toUpperCase();
                         
-                        if(String.valueOf(pm.RecordTypeId) == lcnsCautionList[2].Policy_RecordTypeId__c)
+                        if(!pmTaskMap.containsKey(nbor.PolicyMaster__c))
                         {
-                            if(System.Label.LCNS_NEWAGT_Cautions.contains(nbORequirement))
+                            Task t = New Task();
+                            t.ActivityDate = System.today();
+                            t.Description = nbor.Requirement__c;
+                            t.Sales_Unit__c = lcnsCautionList[0].SalesUnit__c;
+                            t.Status = lcnsCautionList[0].Status__c;
+                            t.Subject = lcnsCautionList[0].Subject__c;
+                            t.WhatId = nbor.PolicyMaster__c;
+                            t.WhoId = pm.Agent__c;
+                            System.debug('Task IN----------');
+                            if(String.valueOf(pm.RecordTypeId) == lcnsCautionList[2].Policy_RecordTypeId__c)
                             {
-                                t.Category__c = lcnsCautionList[1].Category__c;
-                                t.Created_by_Automation__c = lcnsCautionList[1].CreatedByAutomation__c;
-                                t.OwnerId = lcnsCautionList[1].TaskOwnerId__c;
+                                    if(System.Label.LCNS_NEWAGT_Cautions.contains(nbORequirement))
+                                {
+                                    t.Category__c = lcnsCautionList[1].Category__c;
+                                    t.Created_by_Automation__c = lcnsCautionList[1].CreatedByAutomation__c;
+                                   // t.OwnerId = lcnsCautionList[1].TaskOwnerId__c;
+                                }
+                                else if(System.Label.LCNS_Life_Cautions.contains(nbORequirement))
+                                {
+                                    t.Category__c = lcnsCautionList[2].Category__c;
+                                    t.Created_by_Automation__c = lcnsCautionList[2].CreatedByAutomation__c;
+                                  //  t.OwnerId = lcnsCautionList[2].TaskOwnerId__c;
+                                }
                             }
-                            else if(System.Label.LCNS_Life_Cautions.contains(nbORequirement))
+                            else if(String.valueOf(pm.RecordTypeId) == lcnsCautionList[3].Policy_RecordTypeId__c && System.Label.LCNS_Annuity_Cautions.contains(nbORequirement))
                             {
-                                t.Category__c = lcnsCautionList[2].Category__c;
-                                t.Created_by_Automation__c = lcnsCautionList[2].CreatedByAutomation__c;
-                                t.OwnerId = lcnsCautionList[2].TaskOwnerId__c;
+                                t.Category__c = lcnsCautionList[3].Category__c;
+                                t.Created_by_Automation__c = lcnsCautionList[3].CreatedByAutomation__c;
+                              //  t.OwnerId = lcnsCautionList[3].TaskOwnerId__c;
                             }
+                            pmTaskMap.put(nbor.PolicyMaster__c, t);
                         }
-                        else if(String.valueOf(pm.RecordTypeId) == lcnsCautionList[3].Policy_RecordTypeId__c && System.Label.LCNS_Annuity_Cautions.contains(nbORequirement))
-                        {
-                            t.Category__c = lcnsCautionList[3].Category__c;
-                            t.Created_by_Automation__c = lcnsCautionList[3].CreatedByAutomation__c;
-                            t.OwnerId = lcnsCautionList[3].TaskOwnerId__c;
+                        else{
+                            if(String.valueOf(pm.RecordTypeId) == lcnsCautionList[1].Policy_RecordTypeId__c && System.Label.LCNS_NEWAGT_Cautions.contains(nbORequirement))
+                            {
+                                pmTaskMap.get(nbor.PolicyMaster__c).Created_by_Automation__c = lcnsCautionList[1].CreatedByAutomation__c;
+                             //   pmTaskMap.get(nbor.PolicyMaster__c).OwnerId = lcnsCautionList[1].TaskOwnerId__c;
+                            }
+                            pmTaskMap.get(nbor.PolicyMaster__c).Description += ' / ' + nbor.Requirement__c;
+                            system.debug('pmTaskMap------'+pmTaskMap);
                         }
-                       
-                        pmTaskMap.put(nbor.PolicyMaster__c, t);
-                        System.debug('######'+nbor.PolicyMaster__c);
-                           System.debug('######'+t);
                     }
-                    else{
-                        if(String.valueOf(pm.RecordTypeId) == lcnsCautionList[1].Policy_RecordTypeId__c && System.Label.LCNS_NEWAGT_Cautions.contains(nbORequirement))
-                        {
-                            pmTaskMap.get(nbor.PolicyMaster__c).Created_by_Automation__c = lcnsCautionList[1].CreatedByAutomation__c;
-                            pmTaskMap.get(nbor.PolicyMaster__c).OwnerId = lcnsCautionList[1].TaskOwnerId__c;
-                        }
-                        pmTaskMap.get(nbor.PolicyMaster__c).Description += ' / ' + nbor.Requirement__c;
-                    }
-                }
-                
-                if(!pmMapToUpdate.containsKey(pm.Id))
-                {
-                    PolicyMaster__c pmObj = new PolicyMaster__c();
-                    pmObj.Id = pm.Id;
-                    pmObj.First_LCNS_Caution__c = true;
-                    pmMapToUpdate.put(pm.Id, pmObj);
                     
-                    policiesToUpdate += pm.Id + ',';
-                    policiesToUpdateCount += 1;
-                    if(System.Label.sendExceptionEmails_Switch == 'true')
+                    if(!pmMapToUpdate.containsKey(pm.Id))
                     {
-                        allPoliciesToUpdate += pm.Id + ',';
-                        allPoliciesToUpdateCount += 1;
+                        //PolicyMaster__c pmObj = new PolicyMaster__c();
+                        //pmObj.Id = pm.Id;
+                        
+                        pm.First_LCNS_Caution__c = true;
+                        pmMapToUpdate.put(pm.Id, pm);
+                        
+                        policiesToUpdate += pm.Id + ',';
+                        policiesToUpdateCount += 1;
+                        if(System.Label.sendExceptionEmails_Switch == 'true')
+                        {
+                            allPoliciesToUpdate += pm.Id + ',';
+                            allPoliciesToUpdateCount += 1;
+                        }
                     }
                 }
-            }
-        }
+          }
         System.debug('policiesToUpdateCount: ' + policiesToUpdateCount);
         System.debug('policiesToUpdate: ' + policiesToUpdate);
-        System.debug('pmTaskMap: ' + pmTaskMap.size());
-        
+        Map<id,Task> tskNLFA = new Map<id,Task>();
         try
         {
             if(!pmTaskMap.isEmpty())
             {
+                for(Id pId : pmTaskMap.keyset())
+                {
+                  PolicyMaster__c pol = new PolicyMaster__c();
+                  pol = pmMapToUpdate.get(pId);
+                  system.debug('pol--------'+pol);
+                  system.debug('pol.Agency__r.channel__c--------'+pol.Agency__r.channel__c);
+                  if(pol.Agency__r.channel__c == 'NLFA')
+                  {
+                    if(pmTaskMap.containsKey(pol.Id))
+                    {
+                        Task tk = pmTaskMap.get(pol.Id);
+                    	tk.ownerId = label.LCNS_Danielle_Phillips;
+                        System.debug('Task Owner----------'+tk.ownerId);
+                        System.debug('pmTaskMap----------'+pmTaskMap);
+                    }
+                   }
+                }
+                 System.debug('pmTaskMap----------'+pmTaskMap);
                 System.debug('pmTaskMap.size before insert: ' + pmTaskMap.size());
                 Database.SaveResult[] taskSRList = Database.insert(pmTaskMap.values(), false);
                 if(System.Label.sendExceptionEmails_Switch == 'true')
@@ -356,8 +289,8 @@ global class LCNSCautionPolicyTaskCreationBatch implements Database.Batchable<sO
             List<String> AdminsEmailIdsList = System.Label.NBNotifyAdminAddress.split(';');
             String[] toRecipientsEmails = AdminsEmailIdsList;
     
-         //TESTING   //SendExceptionEmails obj = new SendExceptionEmails();
-       //     obj.sendEmails(resultSubject, resultEmailBody, toRecipientsEmails);
+        //    SendExceptionEmails obj = new SendExceptionEmails();
+           // obj.sendEmails(resultSubject, resultEmailBody, toRecipientsEmails);
         }
         if(policyRTName == 'Life Policy' && System.Label.SatisfiedOutReqBatch_Switch == 'true')
         {
